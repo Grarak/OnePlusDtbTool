@@ -45,8 +45,8 @@
 
 #define QCDT_DT_TAG      "qcom,msm-id = <"
 #define QCDT_BOARD_TAG   "qcom,board-id = <"
-#define QCDT_HW_TAG      "qcom,hw-ver = <"
 #define QCDT_PRODUCT_TAG "qcom,product-name = \""
+#define QCDT_HW_TAG      "qcom,hw-ver = <"
 
 #define PAGE_SIZE_DEF  2048
 #define PAGE_SIZE_MAX  (1024*1024)
@@ -65,8 +65,8 @@ struct chipInfo_t {
   uint32_t platform;
   uint32_t subtype;
   uint32_t revNum;
+  char productName[8];
   uint32_t hwrev;
-  char productName[5];
   uint32_t dtb_size;
   char     *dtb_file;
   struct chipInfo_t *prev;
@@ -206,8 +206,8 @@ int chip_add(struct chipInfo_t *c)
             (c->platform == x->platform) &&
             (c->subtype == x->subtype) &&
             (c->revNum == x->revNum) &&
-            (c->hwrev == x->hwrev) &&
-            (strcmp(c->productName, x->productName) == 0)) {
+            (strcmp(c->productName, x->productName) == 0) &&
+            (c->hwrev == x->hwrev)) {
             return RC_ERROR;  /* duplicate */
         }
         if (!x->next) {
@@ -256,8 +256,8 @@ struct chipInfo_t *getChipInfo(const char *filename, int *num, uint32_t msmversi
     struct chipInfo_t *chip = NULL, *tmp;
     uint32_t data[3] = {0, 0, 0};
     uint32_t data_st[2] = {0, 0};
+    char productName[8];
     uint32_t hwrev;
-    char productName[5];
     char *tok, *sptr = NULL;
     int i, entryValid, entryEnded;
     int count = 0, count1 = 0, count2 =0;
@@ -446,15 +446,17 @@ struct chipInfo_t *getChipInfo(const char *filename, int *num, uint32_t msmversi
                     }
                 }
 
+                if ((pos = strstr(line,QCDT_PRODUCT_TAG)) != NULL) {
+                    pos += strlen(QCDT_PRODUCT_TAG);
+                    tok = strtok_r(pos, "\"", &sptr);
+                    memset(productName, 0, sizeof(productName));
+                    memcpy(productName, tok, strlen(tok));
+                }
+
                 if ((pos = strstr(line,QCDT_HW_TAG)) != NULL) {
                     pos += strlen(QCDT_HW_TAG);
                     tok = strtok_r(pos, "", &sptr);
                     hwrev = strtoul(tok, NULL, 0);
-                }
-
-                if ((pos = strstr(line,QCDT_PRODUCT_TAG)) != NULL) {
-                    pos += strlen(QCDT_PRODUCT_TAG);
-                    strcpy(productName, strtok(pos, "\""));
                 }
             }
         }
@@ -471,12 +473,12 @@ struct chipInfo_t *getChipInfo(const char *filename, int *num, uint32_t msmversi
         log_err("... skip, incorrect '%s' format\n", QCDT_BOARD_TAG);
         return NULL;
     }
-    if (hwrev == 0) {
-        log_err("... skip, incorrect '%s' format\n", QCDT_HW_TAG);
-        return NULL;
-    }
     if (!productName[0]) {
         log_err("... skip, incorrect '%s' format\n", QCDT_PRODUCT_TAG);
+        return NULL;
+    }
+    if (hwrev == 0) {
+        log_err("... skip, incorrect '%s' format\n", QCDT_HW_TAG);
         return NULL;
     }
 
@@ -501,8 +503,8 @@ struct chipInfo_t *getChipInfo(const char *filename, int *num, uint32_t msmversi
             tmp->platform = cSt->platform;
             tmp->revNum   = cId->revNum;
             tmp->subtype  = cSt->subtype;
+            memcpy(tmp->productName, productName, sizeof(productName));
             tmp->hwrev    = hwrev;
-            strcpy(tmp->productName, productName);
             tmp->dtb_size = 0;
             tmp->dtb_file = NULL;
             tmp->master   = chip;
@@ -825,8 +827,8 @@ int main(int argc, char **argv)
         wrote += write(out_fd, &chip->platform, sizeof(uint32_t));
         wrote += write(out_fd, &chip->subtype, sizeof(uint32_t));
         wrote += write(out_fd, &chip->revNum, sizeof(uint32_t));
+        wrote += write(out_fd, &chip->productName, sizeof(chip->productName));
         wrote += write(out_fd, &chip->hwrev, sizeof(uint32_t));
-        wrote += write(out_fd, &chip->productName, sizeof(&chip->productName));
         if (chip->master->master_offset != 0) {
             wrote += write(out_fd, &chip->master->master_offset, sizeof(uint32_t));
         } else {
